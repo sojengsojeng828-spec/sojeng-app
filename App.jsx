@@ -4007,19 +4007,19 @@ const { paged, page, setPage, totalPages, total, start, end } = usePagination(fi
           </p>
 
           <div style={{ marginTop: 8, marginBottom: 8, fontWeight: 600, fontSize: 14 }}>สินค้า</div>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 750, tableLayout: "fixed" }}>
+          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+            <table style={{ borderCollapse: "collapse", tableLayout: "fixed", width: 860 }}>
               <thead>
                 <tr>
-                  <th style={{ ...thStyle, width: 160 }}>สินค้า</th>
-                  <th style={{ ...thStyle, textAlign: "right", width: 90 }}>จำนวน</th>
-                  <th style={{ ...thStyle, width: 52 }}>หน่วย</th>
-                  <th style={{ ...thStyle, textAlign: "right", width: 75 }}>หัก%</th>
+                  <th style={{ ...thStyle, width: 180 }}>สินค้า</th>
+                  <th style={{ ...thStyle, textAlign: "right", width: 80 }}>จำนวน</th>
+                  <th style={{ ...thStyle, width: 48 }}>หน่วย</th>
+                  <th style={{ ...thStyle, textAlign: "right", width: 70 }}>หัก%</th>
                   <th style={{ ...thStyle, textAlign: "right", width: 80 }}>หัก(กก.)</th>
-                  <th style={{ ...thStyle, textAlign: "right", width: 80 }}>รวมหัก</th>
-                  <th style={{ ...thStyle, textAlign: "right", width: 75 }}>สุทธิ</th>
-                  <th style={{ ...thStyle, textAlign: "right", width: 100 }}>ราคา/หน่วย</th>
-                  <th style={{ ...thStyle, textAlign: "right", width: 100 }}>จำนวนเงิน</th>
+                  <th style={{ ...thStyle, textAlign: "right", width: 76 }}>รวมหัก</th>
+                  <th style={{ ...thStyle, textAlign: "right", width: 70 }}>สุทธิ</th>
+                  <th style={{ ...thStyle, textAlign: "right", width: 96 }}>ราคา/หน่วย</th>
+                  <th style={{ ...thStyle, textAlign: "right", width: 96 }}>จำนวนเงิน</th>
                   <th style={{ ...thStyle, width: 40 }}></th>
                 </tr>
               </thead>
