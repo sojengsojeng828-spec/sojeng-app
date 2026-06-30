@@ -4011,7 +4011,7 @@ const { paged, page, setPage, totalPages, total, start, end } = usePagination(fi
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 750, tableLayout: "fixed" }}>
               <thead>
                 <tr>
-                  <th style={thStyle}>สินค้า</th>
+                  <th style={{ ...thStyle, width: 160 }}>สินค้า</th>
                   <th style={{ ...thStyle, textAlign: "right", width: 90 }}>จำนวน</th>
                   <th style={{ ...thStyle, width: 52 }}>หน่วย</th>
                   <th style={{ ...thStyle, textAlign: "right", width: 75 }}>หัก%</th>
