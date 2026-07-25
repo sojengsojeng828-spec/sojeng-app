@@ -2906,7 +2906,7 @@ function Dashboard({ products, customers, purchases, sales, inventory, expenses,
         }, 0);
 
         // เงินหมุนยอดทั้งหมด = ธนาคาร + เงินสด + เงินมัดจำ + ลูกหนี้ - เจ้าหนี้ - ค่าใช้จ่ายที่ยังไม่ได้ติ๊กเบิก
-        const grandTotal = bankGroupTotal + cashGroupTotal + totalDeposit + totalPrepayment + totalReceivable - totalPayable - pendingExpenseTotal;
+        const grandTotal = bankGroupTotal + cashGroupTotal + totalDeposit + totalPrepayment + totalReceivable - totalPayable + pendingExpenseTotal + stockVal;
 
         // ตัวเก็บค่ามัดจำแบบตัดตามช่วงเวลาที่เลือก (คำนวณในตารางด้านล่าง ใช้ร่วมกันระหว่างแถว "เงินมัดจำคงเหลือรวม" กับแถว "ยอดรวมทั้งหมด")
         const depRange = { opening: 0, in: 0, out: 0, balance: 0 };
@@ -2938,9 +2938,9 @@ function Dashboard({ products, customers, purchases, sales, inventory, expenses,
                     ["เจ้าหนี้ค้างจ่าย (ลบ)", -totalPayable],
                     ["เงินมัดจำคงเหลือ", totalDeposit],
                     ["รับล่วงหน้าคงเหลือ", totalPrepayment],
-                    ["มูลค่าสต๊อก (ทุน)", stockVal],
-                    ["ค่าใช้จ่ายที่ยังไม่ได้ติ๊กเบิก (ลบ)", -pendingExpenseTotal],
-                    ["เงินหมุนยอดทั้งหมด (ธนาคาร + เงินสด + เงินมัดจำ + ลูกหนี้ - เจ้าหนี้ - ค่าใช้จ่ายค้างเบิก)", grandTotal],
+                    ["มูลค่าสต๊อก (ทุน) (บวก)", stockVal],
+                    ["ค่าใช้จ่ายค้างเบิก (บวก)", pendingExpenseTotal],
+                    ["เงินหมุนยอดทั้งหมด (ธนาคาร + เงินสด + เงินมัดจำ + ลูกหนี้ - เจ้าหนี้ + ค่าใช้จ่ายค้างเบิก + สต๊อก)", grandTotal],
                   ];
                   exportExcel(rows, "เงินหมุนร้าน.xlsx", "เงินหมุน");
                 }}
@@ -2957,7 +2957,7 @@ function Dashboard({ products, customers, purchases, sales, inventory, expenses,
                 {cfCard("เงินมัดจำคงเหลือ", totalDeposit, "#1A5C2A", "#E8F5EC", "มัดจำที่ยังไม่ใช้ (ปัจจุบัน)")}
                 {cfCard("รับล่วงหน้าคงเหลือ", totalPrepayment, "#1d4ed8", "#eff6ff", "ลูกค้าจ่ายล่วงหน้าที่ยังไม่ได้ตัด")}
                 {cfCard("มูลค่าสต๊อก (ทุน)", stockVal, "#2E8B45", "#E8F5EC", "สินค้าคงเหลือ (ปัจจุบัน)")}
-                {cfCard("ค่าใช้จ่ายค้างเบิก", pendingExpenseTotal, "#b91c1c", "#fef2f2", "ยังไม่ได้ติ๊กเบิก")}
+                {cfCard("ค่าใช้จ่ายค้างเบิก", pendingExpenseTotal, "#1A5C2A", "#E8F5EC", "ยังไม่ได้ติ๊กเบิก")}
                 {cfCard(dateRange ? "เงินสดรวม (ช่วงที่เลือก)" : "เงินสดรวม", cashGroupTotal, "#1A5C2A", "#E8F5EC", `${cashGroupRows.length} บัญชี`)}
               </div>
 
@@ -2965,7 +2965,7 @@ function Dashboard({ products, customers, purchases, sales, inventory, expenses,
               <div style={{ background: grandTotal >= 0 ? "#E8F5EC" : "#E8F5EC", borderRadius: 16, padding: "24px 28px", border: `3px solid ${grandTotal >= 0 ? "#1A5C2A" : "#2E7A42"}`, marginBottom: 20 }}>
                 <div style={{ fontSize: 14, color: grandTotal >= 0 ? "#1A5C2A" : "#2E7A42", marginBottom: 6, fontWeight: 700 }}>เงินหมุนยอดทั้งหมด</div>
                 <div style={{ fontWeight: 700, fontSize: 32, color: grandTotal >= 0 ? "#1A5C2A" : "#2E7A42" }}>฿{fmt(grandTotal)}</div>
-                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>ธนาคาร + เงินสด + เงินมัดจำ + ลูกหนี้ − เจ้าหนี้ − ค่าใช้จ่ายค้างเบิก</div>
+                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>ธนาคาร + เงินสด + เงินมัดจำ + ลูกหนี้ − เจ้าหนี้ + ค่าใช้จ่ายค้างเบิก + สต๊อก</div>
               </div>
 
               {/* ตารางรายละเอียดธนาคาร */}
@@ -3111,7 +3111,8 @@ function Dashboard({ products, customers, purchases, sales, inventory, expenses,
                       { label: "ลูกหนี้การค้า (ค้างรับ)", value: totalReceivable, color: "#1A5C2A", sign: "+" },
                       { label: "เจ้าหนี้การค้า (ค้างจ่าย)", value: totalPayable, color: "#1A6B35", sign: "−" },
                       { label: "เงินมัดจำคงเหลือ", value: totalDeposit, color: "#1A5C2A", sign: "+" },
-                      { label: "ค่าใช้จ่ายค้างเบิก (ยังไม่ได้ติ๊กเบิก)", value: pendingExpenseTotal, color: "#b91c1c", sign: "−" },
+                      { label: "ค่าใช้จ่ายค้างเบิก (ยังไม่ได้ติ๊กเบิก)", value: pendingExpenseTotal, color: "#1A5C2A", sign: "+" },
+                      { label: "มูลค่าสต๊อกสินค้า (ทุน)", value: stockVal, color: "#2E8B45", sign: "+" },
                     ].map((r) => (
                       <tr key={r.label}>
                         <td style={{ ...tdStyle, display: "flex", alignItems: "center", gap: 8 }}>
@@ -3126,10 +3127,6 @@ function Dashboard({ products, customers, purchases, sales, inventory, expenses,
                     <tr style={{ background: grandTotal >= 0 ? "#E8F5EC" : "#E8F5EC", borderTop: "2px solid #0D3D1A" }}>
                       <td style={{ ...tdStyle, fontWeight: 700, fontSize: 15 }}>เงินหมุนยอดทั้งหมด</td>
                       <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, fontSize: 18, color: grandTotal >= 0 ? "#1A5C2A" : "#2E7A42" }}>฿{fmt(grandTotal)}</td>
-                    </tr>
-                    <tr style={{ background: "#f9fafb" }}>
-                      <td style={{ ...tdStyle, color: "#6b7280", fontSize: 12 }}>+ มูลค่าสต๊อกสินค้า (ทุน) — ไม่รวมในเงินสด</td>
-                      <td style={{ ...tdStyle, textAlign: "right", color: "#6b7280", fontSize: 12 }}>฿{fmt(stockVal)}</td>
                     </tr>
                   </tfoot>
                 </table>
