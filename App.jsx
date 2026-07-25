@@ -2888,8 +2888,28 @@ function Dashboard({ products, customers, purchases, sales, inventory, expenses,
         // 5. สต๊อกสินค้า (มูลค่าทุน ณ ปัจจุบัน)
         const stockVal = inventory.summary.reduce((s, x) => s + x.totalCost, 0);
 
-        // เงินหมุนยอดทั้งหมด = ธนาคาร + เงินสด + เงินมัดจำ + ลูกหนี้ - เจ้าหนี้
-        const grandTotal = bankGroupTotal + cashGroupTotal + totalDeposit + totalPrepayment + totalReceivable - totalPayable;
+        // 6. ค่าใช้จ่ายที่ยังไม่ได้ติ๊ก "เบิกแล้ว" (พนักงานสำรองจ่ายไปแล้ว แต่ร้านยังไม่ได้ดึงเงินคืนจากวงเงินจริง)
+        // ใช้ payFlags เดียวกับหน้า "รับชำระ/จ่ายชำระ" — ติ๊กแล้วถือว่าเงินออกจากบัญชีร้านไปแล้ว จึงไม่ต้องนับซ้ำตรงนี้
+        const payFlagsNow = (() => { try { return JSON.parse(localStorage.getItem("payFlags") || "{}"); } catch { return {}; } })();
+        const pendingExpenseTotal = (expenses || []).reduce((s, e) => {
+          const items = (e.items && e.items.length > 0) ? e.items : [{ amount: e.amount, vatEnabled: e.vatEnabled, whtRate: e.whtRate }];
+          let amount = 0, vat = 0, wht = 0;
+          items.forEach((it) => {
+            const itAmount = Number(it.amount) || 0;
+            amount += itAmount;
+            vat += it.vatEnabled ? itAmount * 0.07 : 0;
+            wht += itAmount * ((Number(it.whtRate) || 0) / 100);
+          });
+          const total = amount + vat - wht;
+          const id = e.refNo || e.id;
+          return payFlagsNow[`${id}_withdrawn`] ? s : s + total;
+        }, 0);
+
+        // เงินหมุนยอดทั้งหมด = ธนาคาร + เงินสด + เงินมัดจำ + ลูกหนี้ - เจ้าหนี้ - ค่าใช้จ่ายที่ยังไม่ได้ติ๊กเบิก
+        const grandTotal = bankGroupTotal + cashGroupTotal + totalDeposit + totalPrepayment + totalReceivable - totalPayable - pendingExpenseTotal;
+
+        // ตัวเก็บค่ามัดจำแบบตัดตามช่วงเวลาที่เลือก (คำนวณในตารางด้านล่าง ใช้ร่วมกันระหว่างแถว "เงินมัดจำคงเหลือรวม" กับแถว "ยอดรวมทั้งหมด")
+        const depRange = { opening: 0, in: 0, out: 0, balance: 0 };
 
         const cfCard = (label, value, color, bg, sub) => (
           <div style={{ background: bg, borderRadius: 12, padding: "14px 18px", border: `1px solid ${color}33` }}>
@@ -2919,7 +2939,8 @@ function Dashboard({ products, customers, purchases, sales, inventory, expenses,
                     ["เงินมัดจำคงเหลือ", totalDeposit],
                     ["รับล่วงหน้าคงเหลือ", totalPrepayment],
                     ["มูลค่าสต๊อก (ทุน)", stockVal],
-                    ["เงินหมุนยอดทั้งหมด (ธนาคาร + เงินสด + เงินมัดจำ + ลูกหนี้ - เจ้าหนี้)", grandTotal],
+                    ["ค่าใช้จ่ายที่ยังไม่ได้ติ๊กเบิก (ลบ)", -pendingExpenseTotal],
+                    ["เงินหมุนยอดทั้งหมด (ธนาคาร + เงินสด + เงินมัดจำ + ลูกหนี้ - เจ้าหนี้ - ค่าใช้จ่ายค้างเบิก)", grandTotal],
                   ];
                   exportExcel(rows, "เงินหมุนร้าน.xlsx", "เงินหมุน");
                 }}
@@ -2936,6 +2957,7 @@ function Dashboard({ products, customers, purchases, sales, inventory, expenses,
                 {cfCard("เงินมัดจำคงเหลือ", totalDeposit, "#1A5C2A", "#E8F5EC", "มัดจำที่ยังไม่ใช้ (ปัจจุบัน)")}
                 {cfCard("รับล่วงหน้าคงเหลือ", totalPrepayment, "#1d4ed8", "#eff6ff", "ลูกค้าจ่ายล่วงหน้าที่ยังไม่ได้ตัด")}
                 {cfCard("มูลค่าสต๊อก (ทุน)", stockVal, "#2E8B45", "#E8F5EC", "สินค้าคงเหลือ (ปัจจุบัน)")}
+                {cfCard("ค่าใช้จ่ายค้างเบิก", pendingExpenseTotal, "#b91c1c", "#fef2f2", "ยังไม่ได้ติ๊กเบิก")}
                 {cfCard(dateRange ? "เงินสดรวม (ช่วงที่เลือก)" : "เงินสดรวม", cashGroupTotal, "#1A5C2A", "#E8F5EC", `${cashGroupRows.length} บัญชี`)}
               </div>
 
@@ -2943,7 +2965,7 @@ function Dashboard({ products, customers, purchases, sales, inventory, expenses,
               <div style={{ background: grandTotal >= 0 ? "#E8F5EC" : "#E8F5EC", borderRadius: 16, padding: "24px 28px", border: `3px solid ${grandTotal >= 0 ? "#1A5C2A" : "#2E7A42"}`, marginBottom: 20 }}>
                 <div style={{ fontSize: 14, color: grandTotal >= 0 ? "#1A5C2A" : "#2E7A42", marginBottom: 6, fontWeight: 700 }}>เงินหมุนยอดทั้งหมด</div>
                 <div style={{ fontWeight: 700, fontSize: 32, color: grandTotal >= 0 ? "#1A5C2A" : "#2E7A42" }}>฿{fmt(grandTotal)}</div>
-                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>ธนาคาร + เงินสด + เงินมัดจำ + ลูกหนี้ − เจ้าหนี้</div>
+                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>ธนาคาร + เงินสด + เงินมัดจำ + ลูกหนี้ − เจ้าหนี้ − ค่าใช้จ่ายค้างเบิก</div>
               </div>
 
               {/* ตารางรายละเอียดธนาคาร */}
@@ -3029,32 +3051,46 @@ function Dashboard({ products, customers, purchases, sales, inventory, expenses,
                     <tfoot>
 
                       {(() => {
-                        const depOpening = customers.reduce((s,c) => s + (Number(c.depositOpening)||0), 0);
-                        const depIn = (deposits||[]).reduce((s,d) => s + (Number(d.amount)||0), 0);
-                        const depOut = purchases.reduce((s,po) => s + (po.payments||[]).filter(p=>p.fromStoreBankId==="DEPOSIT").reduce((s2,p)=>s2+(Number(p.amount)||0),0), 0);
+                        const openingTotal = customers.reduce((s,c) => s + (Number(c.depositOpening)||0), 0);
+                        if (dateRange) {
+                          const beforeDate = (d) => d < dateRange.start;
+                          let obCalc = openingTotal;
+                          (deposits||[]).forEach((d) => { if (beforeDate(d.date)) obCalc += Number(d.amount)||0; });
+                          purchases.forEach((po) => (po.payments||[]).forEach((p) => {
+                            if (p.fromStoreBankId === "DEPOSIT" && beforeDate(p.date)) obCalc -= Number(p.amount)||0;
+                          }));
+                          depRange.opening = obCalc;
+                          depRange.in = (deposits||[]).filter((d) => inRange(d.date)).reduce((s,d) => s + (Number(d.amount)||0), 0);
+                          depRange.out = purchases.reduce((s,po) => s + (po.payments||[]).filter((p) => p.fromStoreBankId==="DEPOSIT" && inRange(p.date)).reduce((s2,p) => s2+(Number(p.amount)||0), 0), 0);
+                        } else {
+                          depRange.opening = openingTotal;
+                          depRange.in = (deposits||[]).reduce((s,d) => s + (Number(d.amount)||0), 0);
+                          depRange.out = purchases.reduce((s,po) => s + (po.payments||[]).filter((p) => p.fromStoreBankId==="DEPOSIT").reduce((s2,p) => s2+(Number(p.amount)||0), 0), 0);
+                        }
+                        depRange.balance = depRange.opening + depRange.in - depRange.out;
                         return (
                           <tr style={{ background: "#fff" }}>
                             <td colSpan={2} style={{ ...tdStyle, fontWeight: 700, color: "#1A5C2A" }}>เงินมัดจำคงเหลือรวม</td>
-                            <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: "#6b7280" }}>฿{fmt(depOpening)}</td>
-                            <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: "#1A5C2A" }}>+฿{fmt(depIn)}</td>
-                            <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: "#1A6B35" }}>-฿{fmt(depOut)}</td>
-                            <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, fontSize: 15, color: "#1A5C2A" }}>฿{fmt(totalDeposit)}</td>
+                            <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: "#6b7280" }}>฿{fmt(depRange.opening)}</td>
+                            <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: "#1A5C2A" }}>+฿{fmt(depRange.in)}</td>
+                            <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: "#1A6B35" }}>-฿{fmt(depRange.out)}</td>
+                            <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, fontSize: 15, color: "#1A5C2A" }}>฿{fmt(depRange.balance)}</td>
                           </tr>
                         );
                       })()}
                       <tr style={{ borderTop: "3px solid #185fa5" }}>
                         <td colSpan={2} style={{ ...tdStyle, fontWeight: 700, color: "#185fa5", fontSize: 14 }}>ยอดรวมทั้งหมด (ธนาคาร + เงินสด + มัดจำ)</td>
                         <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: "#374151", fontSize: 14 }}>
-                          ฿{fmt(bankRows.reduce((s,b)=>s+b.ob,0) + customers.reduce((s,c)=>s+(Number(c.depositOpening)||0),0))}
+                          ฿{fmt(bankRows.reduce((s,b)=>s+b.ob,0) + depRange.opening)}
                         </td>
                         <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: "#1A5C2A", fontSize: 14 }}>
-                          +฿{fmt(bankRows.reduce((s,b)=>s+b.inflow,0) + (deposits||[]).reduce((s,d)=>s+(Number(d.amount)||0),0))}
+                          +฿{fmt(bankRows.reduce((s,b)=>s+b.inflow,0) + depRange.in)}
                         </td>
                         <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: "#1A6B35", fontSize: 14 }}>
-                          -฿{fmt(bankRows.reduce((s,b)=>s+b.outflow,0) + purchases.reduce((s,po)=>s+(po.payments||[]).filter(p=>p.fromStoreBankId==="DEPOSIT").reduce((s2,p)=>s2+(Number(p.amount)||0),0),0))}
+                          -฿{fmt(bankRows.reduce((s,b)=>s+b.outflow,0) + depRange.out)}
                         </td>
                         <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: "#185fa5", fontSize: 15 }}>
-                          ฿{fmt(totalBankBalance + totalDeposit)}
+                          ฿{fmt(totalBankBalance + depRange.balance)}
                         </td>
                       </tr>
                     </tfoot>
@@ -3075,6 +3111,7 @@ function Dashboard({ products, customers, purchases, sales, inventory, expenses,
                       { label: "ลูกหนี้การค้า (ค้างรับ)", value: totalReceivable, color: "#1A5C2A", sign: "+" },
                       { label: "เจ้าหนี้การค้า (ค้างจ่าย)", value: totalPayable, color: "#1A6B35", sign: "−" },
                       { label: "เงินมัดจำคงเหลือ", value: totalDeposit, color: "#1A5C2A", sign: "+" },
+                      { label: "ค่าใช้จ่ายค้างเบิก (ยังไม่ได้ติ๊กเบิก)", value: pendingExpenseTotal, color: "#b91c1c", sign: "−" },
                     ].map((r) => (
                       <tr key={r.label}>
                         <td style={{ ...tdStyle, display: "flex", alignItems: "center", gap: 8 }}>
