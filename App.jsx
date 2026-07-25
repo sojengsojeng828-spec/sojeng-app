@@ -1562,6 +1562,7 @@ export default function App() {
     { key: "prepayments",       label: "รับล่วงหน้า",             icon: BadgeDollarSign },
     { key: "banktransfer",      label: "โยกเงินระหว่างธนาคาร",   icon: ArrowLeftRight },
     { key: "delivery",          label: "ใบส่งสินค้า",            icon: Truck },
+    { key: "lotProfit",         label: "กำไรต่อล็อต/ใบขาย",       icon: TrendingUp },
     { key: "inventory",         label: "สต๊อกสินค้า",            icon: Boxes },
     { key: "bankaccounts",      label: "บัญชีธนาคารร้าน",        icon: Landmark },
     { key: "loans",             label: "เงินกู้ยืม/เช่าซื้อ",    icon: Banknote },
@@ -1834,6 +1835,7 @@ export default function App() {
         {tab === "sales" && <SalesTab products={products} customers={customers} sales={sales} setSales={setSales} inventory={inventory} withdrawals={withdrawals} storeBankAccounts={storeBankAccounts} companySettings={companySettings} />}
         {tab === "payments" && <PaymentsTab purchases={purchases} setPurchases={setPurchases} sales={sales} setSales={setSales} customers={customers} storeBankAccounts={storeBankAccounts} deposits={deposits} expenses={expenses} setExpenses={setExpenses} companySettings={companySettings} setCompanySettings={setCompanySettings} bankTransfers={bankTransfers} />}
         {tab === "delivery" && <DeliveryTab deliveries={deliveries} setDeliveries={setDeliveries} products={products} customers={customers} sales={sales} companySettings={companySettings} />}
+        {tab === "lotProfit" && <LotProfitTab sales={sales} products={products} customers={customers} deliveries={deliveries} inventory={inventory} />}
         {tab === "inventory" && <InventoryTab products={products} inventory={inventory} storeBankAccounts={storeBankAccounts} />}
         {tab === "deposits" && <DepositsTab customers={customers} setCustomers={setCustomers} deposits={deposits} setDeposits={setDeposits} purchases={purchases} storeBankAccounts={storeBankAccounts} />}
         {tab === "prepayments" && <PrepaymentsTab customers={customers} setCustomers={setCustomers} prepayments={prepayments} setPrepayments={setPrepayments} sales={sales} storeBankAccounts={storeBankAccounts} />}
@@ -5523,6 +5525,13 @@ function PaymentsTab({ purchases, setPurchases, sales, setSales, customers, stor
     });
   }, [expenses]);
 
+  // มัดจำที่จ่ายให้ลูกค้าไปแล้วแต่ยังไม่ถูกตัดในใบรับสินค้าใดๆ (เงินที่ "ออกจากบริษัทไปแล้ว" แต่ยังไม่กลายเป็นสต๊อก)
+  // ต้องนับรวมเป็นเงินทุนที่ถูกใช้งานอยู่ ไม่งั้นวงเงินคงเหลือจะดูสูงเกินจริงระหว่างที่มัดจำยังค้างอยู่กับลูกค้า
+  const outstandingDeposits = useMemo(() => {
+    const balances = computeDepositBalances(customers, deposits || [], purchases);
+    return balances.reduce((s, b) => s + Math.max(0, b.remaining), 0);
+  }, [customers, deposits, purchases]);
+
   // คำนวณยอดวงเงิน (ต้องอยู่หลัง allPurchaseRows/allSaleRows/allExpenseRows)
   const creditBalance = useMemo(() => {
     if (!creditLimit) return null;
@@ -5530,14 +5539,14 @@ function PaymentsTab({ purchases, setPurchases, sales, setSales, customers, stor
     const totalBuy = allPurchaseRows.filter(r => getWithdrawn(r)).reduce((s, r) => s + r.total, 0);
     const totalExp = allExpenseRows.filter(r => getWithdrawn(r)).reduce((s, r) => s + r.total, 0);
     const totalSale = allSaleRows.filter(r => getWithdrawn(r)).reduce((s, r) => s + r.total, 0);
-    const netOut = totalBuy + totalExp - totalSale;
+    const netOut = totalBuy + totalExp - totalSale + outstandingDeposits;
     const balance = creditLimit - netOut;
     const pendingBuy = allPurchaseRows.filter(r => r.payStatus === "paid" && !getWithdrawn(r)).reduce((s, r) => s + r.total, 0);
     const pendingExp = allExpenseRows.filter(r => r.payStatus === "paid" && !getWithdrawn(r)).reduce((s, r) => s + r.total, 0);
     const pendingSale = allSaleRows.filter(r => r.payStatus === "paid" && !getWithdrawn(r)).reduce((s, r) => s + r.total, 0);
     const pendingNet = pendingBuy + pendingExp - pendingSale;
-    return { limit: creditLimit, netOut, balance, pendingNet, totalBuy, totalExp, totalSale };
-  }, [creditLimit, payFlags, allPurchaseRows, allExpenseRows, allSaleRows]);
+    return { limit: creditLimit, netOut, balance, pendingNet, totalBuy, totalExp, totalSale, outstandingDeposits };
+  }, [creditLimit, payFlags, allPurchaseRows, allExpenseRows, allSaleRows, outstandingDeposits]);
 
   // คำนวณยอดรายวัน — เฉพาะรายการที่ชำระครบแล้ว และมี payment ผ่านบัญชีที่เลือก
   const creditDaySummary = useMemo(() => {
@@ -5750,7 +5759,37 @@ function PaymentsTab({ purchases, setPurchases, sales, setSales, customers, stor
     <div>
       <Header title="รับชำระ / จ่ายชำระ" subtitle="รวมรายการใบรับสินค้าและใบขายที่ยังค้างชำระ — บันทึกการจ่าย/รับเงินจริงได้ที่นี่" />
 
-      {/* วงเงินหมุนเวียน */}
+      {/* วงเงินหมุนเวียน — สรุปเพดานเงินทุนคงเหลือแบบเรียลไทม์ */}
+      {creditBalance && (
+        <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: 16 }}>
+          <div style={{ background: "#0D3D1A", color: "#fff", padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontWeight: 700, fontSize: 14 }}>วงเงินหมุนเวียน</span>
+            <button style={btnSecondary} onClick={() => setShowCreditSetting(true)}>ตั้งค่า</button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 0 }}>
+            {[
+              { label: "เพดานวงเงิน", value: creditBalance.limit },
+              { label: "ต้นทุนสินค้า + ค่าใช้จ่าย", value: creditBalance.totalBuy + creditBalance.totalExp },
+              { label: "มัดจำค้างอยู่กับลูกค้า", value: creditBalance.outstandingDeposits },
+              { label: "หัก รายได้จากการขาย", value: -creditBalance.totalSale },
+              { label: "วงเงินคงเหลือที่ใช้ได้", value: creditBalance.balance, bold: true },
+            ].map((row, i) => (
+              <div key={i} style={{ padding: "12px 16px", borderRight: "1px solid #f3f4f6", borderTop: "1px solid #f3f4f6" }}>
+                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>{row.label}</div>
+                <div style={{ fontSize: row.bold ? 18 : 15, fontWeight: row.bold ? 700 : 600, color: row.bold ? (row.value < 0 ? "#b91c1c" : "#0D3D1A") : "#374151" }}>
+                  ฿{fmt(Math.abs(row.value))}{row.value < 0 && !row.bold ? " (หัก)" : ""}
+                </div>
+              </div>
+            ))}
+          </div>
+          {creditBalance.balance < 0 && (
+            <div style={{ padding: "8px 16px", background: "#fef2f2", color: "#b91c1c", fontSize: 12, fontWeight: 600 }}>
+              ⚠ ใช้เงินเกินเพดานวงเงินที่ตั้งไว้ {fmt(Math.abs(creditBalance.balance))} บาท
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ตารางสรุปรายวัน */}
       <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: 16 }}>
         <div style={{ background: "#4a1e1e", color: "#fff", padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -9849,6 +9888,172 @@ function Badge({ text }) {
 // ===================================================================
 // MONTHLY REPORT TAB (รายงานกำไร/ขาดทุน, สรุปรายเดือน, เงินปันผล)
 // ===================================================================
+// ============================================================
+// รายงานกำไรขาดทุนต่อล็อต/ใบขาย (รอบส่งของ)
+// แต่ละใบขาย (INV) = 1 ล็อต/รอบส่งของ
+// ต้นทุน: รายการที่มาจากใบเบิก (fromWithdrawal) ใช้ต้นทุน FIFO จริงจากใบเบิก (withdrawalValue)
+//         รายการที่ขายตรงไม่ผ่านใบเบิก ใช้ต้นทุนเฉลี่ยปัจจุบันของสินค้านั้นแทน (ประมาณการ — มีเครื่องหมาย ~ กำกับ)
+// ============================================================
+function computeLotProfit(inv, inventory) {
+  let revenue = 0;
+  let cost = 0;
+  let hasEstimate = false;
+  (inv.items || []).forEach((it) => {
+    const net = Number(it.net) || 0;
+    const price = Number(it.price) || 0;
+    revenue += net * price;
+    if (it.fromWithdrawal) {
+      cost += Number(it.withdrawalValue) || 0;
+    } else {
+      const avgCost = inventory?.summary?.find((s) => s.productId === it.productId)?.avgCost || 0;
+      cost += net * avgCost;
+      hasEstimate = true;
+    }
+  });
+  const discount = Number(inv.discount) || 0;
+  const netRevenue = revenue - discount;
+  const profit = netRevenue - cost;
+  const margin = netRevenue > 0 ? (profit / netRevenue) * 100 : 0;
+  return { revenue: netRevenue, cost, profit, margin, hasEstimate };
+}
+
+function LotProfitTab({ sales, products, customers, deliveries, inventory }) {
+  const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [expanded, setExpanded] = useState(null);
+
+  const custName = (id) => customers.find((c) => c.id === id)?.name || id;
+  const prodName = (id) => products.find((p) => p.id === id)?.name || id;
+  const prodUnit = (id) => products.find((p) => p.id === id)?.unit || "";
+
+  const rows = useMemo(() => {
+    return (sales || []).map((inv) => {
+      const pl = computeLotProfit(inv, inventory);
+      const delivery = (deliveries || []).find((d) => d.relatedSaleId === inv.id);
+      return { inv, ...pl, delivery };
+    });
+  }, [sales, inventory, deliveries]);
+
+  const filtered = rows
+    .filter((r) => r.inv.id.includes(search) || custName(r.inv.customerId).includes(search))
+    .filter((r) => (!dateFrom || (r.inv.date || "") >= dateFrom) && (!dateTo || (r.inv.date || "") <= dateTo))
+    .sort((a, b) => (b.inv.date || "").localeCompare(a.inv.date || "") || (b.inv.id || "").localeCompare(a.inv.id || ""));
+
+  const { paged, page, setPage, totalPages, total, start, end } = usePagination(filtered);
+
+  const totals = filtered.reduce((s, r) => ({
+    revenue: s.revenue + r.revenue,
+    cost: s.cost + r.cost,
+    profit: s.profit + r.profit,
+  }), { revenue: 0, cost: 0, profit: 0 });
+  const totalMargin = totals.revenue > 0 ? (totals.profit / totals.revenue) * 100 : 0;
+
+  return (
+    <div>
+      <Header title="กำไรขาดทุนต่อล็อต/ใบขาย" subtitle="แต่ละใบขาย (รอบส่งของ) คือ 1 ล็อต — ต้นทุนคำนวณจากใบเบิกสินค้าจริง (FIFO) ส่วนรายการที่ไม่ได้มาจากใบเบิกใช้ต้นทุนเฉลี่ยประมาณการ" />
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 20 }}>
+        <Card>
+          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>รายได้รวม ({filtered.length} ล็อต)</div>
+          <div style={{ fontSize: 20, fontWeight: 700 }}>฿{fmt(totals.revenue)}</div>
+        </Card>
+        <Card>
+          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>ต้นทุนรวม</div>
+          <div style={{ fontSize: 20, fontWeight: 700 }}>฿{fmt(totals.cost)}</div>
+        </Card>
+        <Card>
+          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>กำไรขาดทุนรวม</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: totals.profit >= 0 ? "#0D3D1A" : "#b91c1c" }}>
+            {totals.profit < 0 ? "-" : ""}฿{fmt(Math.abs(totals.profit))}
+          </div>
+        </Card>
+        <Card>
+          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>อัตรากำไรเฉลี่ย</div>
+          <div style={{ fontSize: 20, fontWeight: 700 }}>{totalMargin.toFixed(1)}%</div>
+        </Card>
+      </div>
+
+      <SearchBar value={search} onChange={setSearch} placeholder="ค้นหาเลขที่ใบขาย หรือชื่อลูกค้า..." dateFrom={dateFrom} dateTo={dateTo} onDateFromChange={setDateFrom} onDateToChange={setDateTo} />
+
+      <Card>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={thStyle}>เลขที่ใบขาย (ล็อต)</th>
+              <th style={thStyle}>วันที่</th>
+              <th style={thStyle}>ลูกค้า</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>รายได้</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>ต้นทุน</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>กำไร/ขาดทุน</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>อัตรากำไร</th>
+              <th style={thStyle}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {paged.map((r) => (
+              <React.Fragment key={r.inv.id}>
+                <tr style={{ cursor: "pointer" }} onClick={() => setExpanded(expanded === r.inv.id ? null : r.inv.id)}>
+                  <td style={tdStyle}>{r.inv.id}{r.hasEstimate && <span title="มีบางรายการที่ไม่ได้มาจากใบเบิก ใช้ต้นทุนเฉลี่ยประมาณการ" style={{ marginLeft: 6, fontSize: 11, color: "#EF9F27" }}>~</span>}</td>
+                  <td style={tdStyle}>{r.inv.date}{r.delivery ? ` (ส่งจริง ${r.delivery.date})` : ""}</td>
+                  <td style={tdStyle}>{custName(r.inv.customerId)}</td>
+                  <td style={{ ...tdStyle, textAlign: "right" }}>฿{fmt(r.revenue)}</td>
+                  <td style={{ ...tdStyle, textAlign: "right" }}>฿{fmt(r.cost)}</td>
+                  <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: r.profit >= 0 ? "#0D3D1A" : "#b91c1c" }}>
+                    {r.profit < 0 ? "-" : ""}฿{fmt(Math.abs(r.profit))}
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: "right" }}>{r.margin.toFixed(1)}%</td>
+                  <td style={tdStyle}>{expanded === r.inv.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</td>
+                </tr>
+                {expanded === r.inv.id && (
+                  <tr>
+                    <td colSpan={8} style={{ padding: "0 0 12px 0", background: "#fafafa" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 4 }}>
+                        <thead>
+                          <tr>
+                            <th style={{ ...thStyle, fontSize: 12 }}>สินค้า</th>
+                            <th style={{ ...thStyle, fontSize: 12, textAlign: "right" }}>จำนวน</th>
+                            <th style={{ ...thStyle, fontSize: 12, textAlign: "right" }}>ราคาขาย</th>
+                            <th style={{ ...thStyle, fontSize: 12, textAlign: "right" }}>รายได้</th>
+                            <th style={{ ...thStyle, fontSize: 12, textAlign: "right" }}>ต้นทุน</th>
+                            <th style={{ ...thStyle, fontSize: 12 }}>ที่มาต้นทุน</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(r.inv.items || []).map((it, idx) => {
+                            const net = Number(it.net) || 0;
+                            const price = Number(it.price) || 0;
+                            const itemRevenue = net * price;
+                            const itemCost = it.fromWithdrawal ? (Number(it.withdrawalValue) || 0) : net * (inventory?.summary?.find((s) => s.productId === it.productId)?.avgCost || 0);
+                            return (
+                              <tr key={idx}>
+                                <td style={{ ...tdStyle, fontSize: 12 }}>{prodName(it.productId)}</td>
+                                <td style={{ ...tdStyle, fontSize: 12, textAlign: "right" }}>{fmt(net)} {prodUnit(it.productId)}</td>
+                                <td style={{ ...tdStyle, fontSize: 12, textAlign: "right" }}>฿{fmt(price)}</td>
+                                <td style={{ ...tdStyle, fontSize: 12, textAlign: "right" }}>฿{fmt(itemRevenue)}</td>
+                                <td style={{ ...tdStyle, fontSize: 12, textAlign: "right" }}>฿{fmt(itemCost)}</td>
+                                <td style={{ ...tdStyle, fontSize: 12, color: it.fromWithdrawal ? "#1A6B35" : "#EF9F27" }}>{it.fromWithdrawal ? "ใบเบิก (FIFO จริง)" : "ต้นทุนเฉลี่ยประมาณการ"}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            ))}
+            {paged.length === 0 && (
+              <tr><td colSpan={8} style={{ ...tdStyle, textAlign: "center", color: "#9ca3af" }}>ไม่มีข้อมูล</td></tr>
+            )}
+          </tbody>
+        </table>
+        <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} start={start} end={end} />
+      </Card>
+    </div>
+  );
+}
+
 function MonthlyReportTab({ purchases, sales, expenses, deposits, inventory, expenseCategories, shareholders, setShareholders, dividendPayments, setDividendPayments, companySettings, setCompanySettings }) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
