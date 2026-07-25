@@ -1833,7 +1833,7 @@ export default function App() {
         {tab === "purchases" && <PurchasesTab products={products} customers={customers} purchases={purchases} setPurchases={setPurchases} storeBankAccounts={storeBankAccounts} deposits={deposits} companySettings={companySettings} />}
         {tab === "withdrawals" && <WithdrawalsTab products={products} purchases={purchases} sales={sales} setSales={setSales} withdrawals={withdrawals} setWithdrawals={setWithdrawals} inventory={inventory} customers={customers} companySettings={companySettings} />}
         {tab === "sales" && <SalesTab products={products} customers={customers} sales={sales} setSales={setSales} inventory={inventory} withdrawals={withdrawals} storeBankAccounts={storeBankAccounts} companySettings={companySettings} />}
-        {tab === "payments" && <PaymentsTab purchases={purchases} setPurchases={setPurchases} sales={sales} setSales={setSales} customers={customers} storeBankAccounts={storeBankAccounts} deposits={deposits} expenses={expenses} setExpenses={setExpenses} companySettings={companySettings} setCompanySettings={setCompanySettings} bankTransfers={bankTransfers} />}
+        {tab === "payments" && <PaymentsTab purchases={purchases} setPurchases={setPurchases} sales={sales} setSales={setSales} customers={customers} storeBankAccounts={storeBankAccounts} deposits={deposits} expenses={expenses} setExpenses={setExpenses} companySettings={companySettings} setCompanySettings={setCompanySettings} bankTransfers={bankTransfers} inventory={inventory} />}
         {tab === "delivery" && <DeliveryTab deliveries={deliveries} setDeliveries={setDeliveries} products={products} customers={customers} sales={sales} companySettings={companySettings} />}
         {tab === "lotProfit" && <LotProfitTab sales={sales} products={products} customers={customers} deliveries={deliveries} inventory={inventory} />}
         {tab === "inventory" && <InventoryTab products={products} inventory={inventory} storeBankAccounts={storeBankAccounts} />}
@@ -5429,7 +5429,7 @@ function SalesInvoiceModal({ inv, customer, products, storeBankAccounts, company
 // ===================================================================
 // PAYMENTS TAB (รับชำระ/จ่ายชำระ — รวมรายการค้างชำระจากใบรับสินค้าและใบขาย)
 // ===================================================================
-function PaymentsTab({ purchases, setPurchases, sales, setSales, customers, storeBankAccounts, deposits, expenses, setExpenses, companySettings, setCompanySettings, bankTransfers }) {
+function PaymentsTab({ purchases, setPurchases, sales, setSales, customers, storeBankAccounts, deposits, expenses, setExpenses, companySettings, setCompanySettings, bankTransfers, inventory }) {
   const [showCreditSetting, setShowCreditSetting] = React.useState(false);
   const [creditDate, setCreditDate] = React.useState(new Date().toISOString().slice(0, 10));
   const [creditManual, setCreditManual] = React.useState(0); // ยอดตกหล่น กรอกมือ
@@ -5532,21 +5532,33 @@ function PaymentsTab({ purchases, setPurchases, sales, setSales, customers, stor
     return balances.reduce((s, b) => s + Math.max(0, b.remaining), 0);
   }, [customers, deposits, purchases]);
 
-  // คำนวณยอดวงเงิน (ต้องอยู่หลัง allPurchaseRows/allSaleRows/allExpenseRows)
+  // มูลค่าสต๊อกคงเหลือ ณ ปัจจุบัน (ที่ต้นทุน) — เงินทุนที่ผูกอยู่ในของที่ยังขายไม่ออก
+  // ใช้แทน "ยอดซื้อสะสม" เพราะยอดซื้อสะสมนับรวมของที่ขายออกไปแล้วด้วย ทำให้ตัวเลขสูงเกินจริงเรื่อยๆ
+  const currentStockValue = useMemo(() => {
+    return (inventory?.summary || []).reduce((s, p) => s + (Number(p.totalCost) || 0), 0);
+  }, [inventory]);
+
+  // ค่าใช้จ่ายที่ยังไม่ถูกเบิกคืน (ยังไม่ติ๊ก "เบิกแล้ว") — เงินที่พนักงานสำรองจ่ายไปแล้วแทนร้าน แต่ร้านยังไม่ได้จ่ายคืนจากวงเงิน
+  // พอติ๊ก "เบิกแล้ว" เมื่อไหร่ ก็ตัดออกจากตรงนี้ (เพราะเงินได้ออกจากบัญชีร้านจริงแล้ว จะไปนับซ้ำที่นี่ไม่ได้)
+  const pendingExpenses = useMemo(() => {
+    const getWithdrawn = (r) => !!payFlags[`${r.id}_withdrawn`];
+    return allExpenseRows.filter((r) => !getWithdrawn(r)).reduce((s, r) => s + r.total, 0);
+  }, [allExpenseRows, payFlags]);
+
+  // เงินที่เก็บได้จริงจากลูกค้า และ "ยังไม่ได้ติ๊กเบิก" เท่านั้น — เงินก้อนนี้ยังอยู่ในบัญชีร้าน ถือเป็นทุนหมุนเวียนที่ใช้ต่อได้
+  // ถ้าติ๊ก "เบิกแล้ว" แปลว่าเจ้าของร้านดึงเงินก้อนนี้ออกจากวงเงินไปแล้ว (เช่น ถอนเป็นกำไร) จึงไม่นับเป็นทุนหมุนเวียนอีกต่อไป
+  const salesCashCollected = useMemo(() => {
+    const getWithdrawn = (r) => !!payFlags[`${r.id}_withdrawn`];
+    return allSaleRows.filter((r) => !getWithdrawn(r)).reduce((s, r) => s + r.paid, 0);
+  }, [allSaleRows, payFlags]);
+
+  // คำนวณยอดวงเงิน = มูลค่าสต๊อกคงเหลือ + ค่าใช้จ่ายที่ยังไม่เบิก + มัดจำค้างอยู่กับลูกค้า − เงินที่เก็บได้จริงจากการขาย
   const creditBalance = useMemo(() => {
     if (!creditLimit) return null;
-    const getWithdrawn = (r) => !!payFlags[`${r.id}_withdrawn`];
-    const totalBuy = allPurchaseRows.filter(r => getWithdrawn(r)).reduce((s, r) => s + r.total, 0);
-    const totalExp = allExpenseRows.filter(r => getWithdrawn(r)).reduce((s, r) => s + r.total, 0);
-    const totalSale = allSaleRows.filter(r => getWithdrawn(r)).reduce((s, r) => s + r.total, 0);
-    const netOut = totalBuy + totalExp - totalSale + outstandingDeposits;
+    const netOut = currentStockValue + pendingExpenses + outstandingDeposits - salesCashCollected;
     const balance = creditLimit - netOut;
-    const pendingBuy = allPurchaseRows.filter(r => r.payStatus === "paid" && !getWithdrawn(r)).reduce((s, r) => s + r.total, 0);
-    const pendingExp = allExpenseRows.filter(r => r.payStatus === "paid" && !getWithdrawn(r)).reduce((s, r) => s + r.total, 0);
-    const pendingSale = allSaleRows.filter(r => r.payStatus === "paid" && !getWithdrawn(r)).reduce((s, r) => s + r.total, 0);
-    const pendingNet = pendingBuy + pendingExp - pendingSale;
-    return { limit: creditLimit, netOut, balance, pendingNet, totalBuy, totalExp, totalSale, outstandingDeposits };
-  }, [creditLimit, payFlags, allPurchaseRows, allExpenseRows, allSaleRows, outstandingDeposits]);
+    return { limit: creditLimit, netOut, balance, currentStockValue, pendingExpenses, outstandingDeposits, salesCashCollected };
+  }, [creditLimit, currentStockValue, pendingExpenses, outstandingDeposits, salesCashCollected]);
 
   // คำนวณยอดรายวัน — เฉพาะรายการที่ชำระครบแล้ว และมี payment ผ่านบัญชีที่เลือก
   const creditDaySummary = useMemo(() => {
@@ -5770,9 +5782,9 @@ function PaymentsTab({ purchases, setPurchases, sales, setSales, customers, stor
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 0 }}>
               {[
                 { label: "เพดานวงเงิน", value: creditBalance.limit },
-                { label: "ต้นทุนสินค้า + ค่าใช้จ่าย", value: creditBalance.totalBuy + creditBalance.totalExp },
+                { label: "สต๊อกคงเหลือ + ค่าใช้จ่ายค้างเบิก", value: creditBalance.currentStockValue + creditBalance.pendingExpenses },
                 { label: "มัดจำค้างอยู่กับลูกค้า", value: creditBalance.outstandingDeposits },
-                { label: "หัก รายได้จากการขาย", value: -creditBalance.totalSale },
+                { label: "หัก เงินที่เก็บได้จริงจากการขาย", value: -creditBalance.salesCashCollected },
                 { label: "วงเงินคงเหลือที่ใช้ได้", value: creditBalance.balance, bold: true },
               ].map((row, i) => (
                 <div key={i} style={{ padding: "12px 16px", borderRight: "1px solid #f3f4f6", borderTop: "1px solid #f3f4f6" }}>
