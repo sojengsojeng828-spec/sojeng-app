@@ -5760,35 +5760,41 @@ function PaymentsTab({ purchases, setPurchases, sales, setSales, customers, stor
       <Header title="รับชำระ / จ่ายชำระ" subtitle="รวมรายการใบรับสินค้าและใบขายที่ยังค้างชำระ — บันทึกการจ่าย/รับเงินจริงได้ที่นี่" />
 
       {/* วงเงินหมุนเวียน — สรุปเพดานเงินทุนคงเหลือแบบเรียลไทม์ */}
-      {creditBalance && (
-        <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: 16 }}>
-          <div style={{ background: "#0D3D1A", color: "#fff", padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontWeight: 700, fontSize: 14 }}>วงเงินหมุนเวียน</span>
-            <button style={btnSecondary} onClick={() => setShowCreditSetting(true)}>ตั้งค่า</button>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 0 }}>
-            {[
-              { label: "เพดานวงเงิน", value: creditBalance.limit },
-              { label: "ต้นทุนสินค้า + ค่าใช้จ่าย", value: creditBalance.totalBuy + creditBalance.totalExp },
-              { label: "มัดจำค้างอยู่กับลูกค้า", value: creditBalance.outstandingDeposits },
-              { label: "หัก รายได้จากการขาย", value: -creditBalance.totalSale },
-              { label: "วงเงินคงเหลือที่ใช้ได้", value: creditBalance.balance, bold: true },
-            ].map((row, i) => (
-              <div key={i} style={{ padding: "12px 16px", borderRight: "1px solid #f3f4f6", borderTop: "1px solid #f3f4f6" }}>
-                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>{row.label}</div>
-                <div style={{ fontSize: row.bold ? 18 : 15, fontWeight: row.bold ? 700 : 600, color: row.bold ? (row.value < 0 ? "#b91c1c" : "#0D3D1A") : "#374151" }}>
-                  ฿{fmt(Math.abs(row.value))}{row.value < 0 && !row.bold ? " (หัก)" : ""}
-                </div>
-              </div>
-            ))}
-          </div>
-          {creditBalance.balance < 0 && (
-            <div style={{ padding: "8px 16px", background: "#fef2f2", color: "#b91c1c", fontSize: 12, fontWeight: 600 }}>
-              ⚠ ใช้เงินเกินเพดานวงเงินที่ตั้งไว้ {fmt(Math.abs(creditBalance.balance))} บาท
-            </div>
-          )}
+      <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: 16 }}>
+        <div style={{ background: "#0D3D1A", color: "#fff", padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontWeight: 700, fontSize: 14 }}>วงเงินหมุนเวียน</span>
+          <button style={btnSecondary} onClick={() => setShowCreditSetting(true)}>ตั้งค่า</button>
         </div>
-      )}
+        {creditBalance ? (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 0 }}>
+              {[
+                { label: "เพดานวงเงิน", value: creditBalance.limit },
+                { label: "ต้นทุนสินค้า + ค่าใช้จ่าย", value: creditBalance.totalBuy + creditBalance.totalExp },
+                { label: "มัดจำค้างอยู่กับลูกค้า", value: creditBalance.outstandingDeposits },
+                { label: "หัก รายได้จากการขาย", value: -creditBalance.totalSale },
+                { label: "วงเงินคงเหลือที่ใช้ได้", value: creditBalance.balance, bold: true },
+              ].map((row, i) => (
+                <div key={i} style={{ padding: "12px 16px", borderRight: "1px solid #f3f4f6", borderTop: "1px solid #f3f4f6" }}>
+                  <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>{row.label}</div>
+                  <div style={{ fontSize: row.bold ? 18 : 15, fontWeight: row.bold ? 700 : 600, color: row.bold ? (row.value < 0 ? "#b91c1c" : "#0D3D1A") : "#374151" }}>
+                    ฿{fmt(Math.abs(row.value))}{row.value < 0 && !row.bold ? " (หัก)" : ""}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {creditBalance.balance < 0 && (
+              <div style={{ padding: "8px 16px", background: "#fef2f2", color: "#b91c1c", fontSize: 12, fontWeight: 600 }}>
+                ⚠ ใช้เงินเกินเพดานวงเงินที่ตั้งไว้ {fmt(Math.abs(creditBalance.balance))} บาท
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{ padding: "16px", fontSize: 13, color: "#6b7280" }}>
+            ยังไม่ได้ตั้งเพดานวงเงินหมุนเวียน — กดปุ่ม "ตั้งค่า" ด้านบนเพื่อกำหนดวงเงิน (เช่น 1,600,000 บาท)
+          </div>
+        )}
+      </div>
 
       {/* ตารางสรุปรายวัน */}
       <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: 16 }}>
