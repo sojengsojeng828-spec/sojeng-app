@@ -391,20 +391,25 @@ function computeInventory(products, purchases, sales, withdrawals = []) {
       events.push({ type: "in", date: po.date, ref: po.id, productId: it.productId, qty: it.net, price: it.price });
     });
   });
-  sales.forEach((inv) => {
-    inv.items.forEach((it) => {
-      if (it.fromWithdrawal) return; // สต๊อกถูกตัดไปแล้วตอนเบิก ไม่ต้องตัดซ้ำที่นี่
-      events.push({ type: "out", date: inv.date, ref: inv.id, productId: it.productId, qty: it.net });
-    });
-  });
+  // หมายเหตุ: ใบขาย (sales) ไม่ตัดสต๊อกโดยตรงอีกต่อไป — การตัดสต๊อกทำผ่าน "ใบเบิกสินค้า" (withdrawals) เท่านั้น
+  // ใบขายเป็นแค่เอกสารเรียกเก็บเงิน ไม่ใช่จุดที่สินค้าถูกหยิบออกจากคลังจริง
   withdrawals.forEach((lot) => {
     (lot.items || []).forEach((it) => {
       events.push({ type: "withdraw", date: lot.date, ref: lot.id, productId: it.sourceProductId, qty: it.qty });
     });
   });
   // เรียงตามวันที่ แล้วให้ "withdraw" มาก่อน "in"/"out" ในวันเดียวกัน เพื่อให้ลำดับสอดคล้องกับการตัดสต๊อกทันที
+  // ถ้าวันที่และประเภทตรงกันเป๊ะ (เช่น ซื้อของตัวเดียวกัน 2 ครั้งในวันเดียวกัน) ต้องมีตัวเรียงสำรอง (ref) กันไว้
+  // ไม่งั้นลำดับจะขึ้นกับว่า Supabase ส่งข้อมูลมาลำดับไหนในตอนนั้น ทำให้ FIFO หยิบล็อตไม่เหมือนเดิมทุกครั้ง
+  // และต้นทุนเฉลี่ย/มูลค่าสต๊อกจะดู "เปลี่ยนเอง" ทั้งที่ไม่มีใครแก้ไขข้อมูลจริง
   const typeOrder = { in: 0, withdraw: 1, out: 2 };
-  events.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (typeOrder[a.type] ?? 1) - (typeOrder[b.type] ?? 1)));
+  events.sort((a, b) => {
+    if (a.date < b.date) return -1;
+    if (a.date > b.date) return 1;
+    const byType = (typeOrder[a.type] ?? 1) - (typeOrder[b.type] ?? 1);
+    if (byType !== 0) return byType;
+    return String(a.ref).localeCompare(String(b.ref));
+  });
 
   events.forEach((ev) => {
     if (!lots[ev.productId]) lots[ev.productId] = [];
