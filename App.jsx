@@ -5465,6 +5465,7 @@ function SalesInvoiceModal({ inv, customer, products, storeBankAccounts, company
 // ===================================================================
 function PaymentsTab({ purchases, setPurchases, sales, setSales, customers, storeBankAccounts, deposits, expenses, setExpenses, companySettings, setCompanySettings, bankTransfers, inventory }) {
   const [showCreditSetting, setShowCreditSetting] = React.useState(false);
+  const [showExpenseBreakdown, setShowExpenseBreakdown] = React.useState(false);
   const [creditDate, setCreditDate] = React.useState(new Date().toISOString().slice(0, 10));
   const [creditManual, setCreditManual] = React.useState(0); // ยอดตกหล่น กรอกมือ
   const [returnBankName, setReturnBankName] = React.useState(""); // ธนาคารโอนคืน
@@ -5834,6 +5835,40 @@ function PaymentsTab({ purchases, setPurchases, sales, setSales, customers, stor
                 ⚠ ใช้เงินเกินเพดานวงเงินที่ตั้งไว้ {fmt(Math.abs(creditBalance.balance))} บาท
               </div>
             )}
+            <div style={{ padding: "8px 16px", borderTop: "1px solid #f3f4f6" }}>
+              <button style={{ ...btnSecondary, fontSize: 12 }} onClick={() => setShowExpenseBreakdown((v) => !v)}>
+                {showExpenseBreakdown ? "ซ่อน" : "ดู"}รายการค่าใช้จ่ายที่นับใน "ค่าใช้จ่ายค้างเบิก" ({allExpenseRows.filter((r) => !payFlags[`${r.id}_withdrawn`]).length} รายการ)
+              </button>
+              {showExpenseBreakdown && (
+                <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 10 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...thStyle, fontSize: 12 }}>เลขที่</th>
+                      <th style={{ ...thStyle, fontSize: 12 }}>วันที่</th>
+                      <th style={{ ...thStyle, fontSize: 12 }}>ผู้รับเงิน</th>
+                      <th style={{ ...thStyle, fontSize: 12, textAlign: "right" }}>ยอดรวม (นับเข้าวงเงิน)</th>
+                      <th style={{ ...thStyle, fontSize: 12, textAlign: "right" }}>จ่ายจริงแล้ว</th>
+                      <th style={{ ...thStyle, fontSize: 12, textAlign: "right" }}>ค้างจ่าย</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allExpenseRows.filter((r) => !payFlags[`${r.id}_withdrawn`]).sort((a, b) => b.total - a.total).map((r) => (
+                      <tr key={r.id}>
+                        <td style={{ ...tdStyle, fontSize: 12 }}>{r.id}</td>
+                        <td style={{ ...tdStyle, fontSize: 12 }}>{r.date}</td>
+                        <td style={{ ...tdStyle, fontSize: 12 }}>{r.vendorLabel}</td>
+                        <td style={{ ...tdStyle, fontSize: 12, textAlign: "right", fontWeight: 600 }}>฿{fmt(r.total)}</td>
+                        <td style={{ ...tdStyle, fontSize: 12, textAlign: "right", color: r.paid > 0 ? "#b91c1c" : "#9ca3af" }}>{r.paid > 0 ? `฿${fmt(r.paid)} (จ่ายไปแล้วแต่ยังไม่ติ๊กเบิก)` : "-"}</td>
+                        <td style={{ ...tdStyle, fontSize: 12, textAlign: "right" }}>฿{fmt(r.remaining)}</td>
+                      </tr>
+                    ))}
+                    {allExpenseRows.filter((r) => !payFlags[`${r.id}_withdrawn`]).length === 0 && (
+                      <tr><td colSpan={6} style={{ ...tdStyle, textAlign: "center", color: "#9ca3af", fontSize: 12 }}>ไม่มีค่าใช้จ่ายค้างเบิก</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </>
         ) : (
           <div style={{ padding: "16px", fontSize: 13, color: "#6b7280" }}>
